@@ -1,4 +1,6 @@
-# AgentCore Project
+# PecarAI
+
+A personal career assistant agent built on AWS Bedrock Agentcore services
 
 This project was created with the [AgentCore CLI](https://github.com/aws/agentcore-cli).
 
