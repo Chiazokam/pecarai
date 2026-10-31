@@ -1,143 +1,56 @@
+import os
+import boto3
+from pathlib import Path
 from typing import Any
 from collections import OrderedDict
 from strands import Agent, tool
-import asyncio
 from strands.agent.conversation_manager.null_conversation_manager import NullConversationManager
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
 from mcp_client.client import get_streamable_http_mcp_client
+from strands.models import BedrockModel
+
 
 app = BedrockAgentCoreApp()
 log = app.logger
 
-# Define a Streamable HTTP MCP Client
-mcp_clients = [get_streamable_http_mcp_client()]
+AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
+NOVA_LITE_MODEL = os.environ.get("NOVA_LITE_MODEL", "amazon.nova-lite-v1:0")                    # Fast, lightweight
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")     # Deep reasoning
+NOVA_PRO_MODEL = os.environ.get("NOVA_PRO_MODEL", "amazon.nova-pro-v1:0")  
+KB_ID = os.environ.get("KB_ID", "")  
 
-DEFAULT_SYSTEM_PROMPT = """
-You are a helpful assistant. Use tools when appropriate.
+model = BedrockModel(
+    model_id=CLAUDE_MODEL,
+    region_name=AWS_REGION,
+    temperature=0.0,
+)
 
-"""
+_bedrock_runtime = boto3.client("bedrock-agent-runtime", region_name=AWS_REGION)
 
-
-# Define a collection of tools used by the model
-tools = []
-
-_INLINE_FUNCTION_NAMES = set()
-
-# Define a simple function tool
 @tool
-def add_numbers(a: int, b: int) -> int:
-    """Return the sum of two numbers"""
-    return a+b
-tools.append(add_numbers)
+def classification_intent_agent(query: str) -> str:
+    # """Classify each call to this agent using Nova Lite. Classify to either of two types chat or feedback"""
+    """
+        Search the knowledge base for information about the user in question, and return the most relevant information.
+
+        Args:
+            query: The question or topic to search for
+        Returns:
+            Relevant information retrieved from the knowledge base
+    """
 
 
+    resp = _bedrock_runtime.retrieve(
+        knowledgeBaseId=KB_ID,
+        retrievalQuery={"text": query},
+    )
+    results = resp.get("retrievalResults", [])
+    if not results:
+        return f"No information found for: {query}"
 
-# Add MCP client to tools if available
-for mcp_client in mcp_clients:
-    if mcp_client:
-        tools.append(mcp_client)
-
-
-def _make_conversation_manager():
-    return NullConversationManager()
-
-# Reuses one Agent per session_id so each session keeps its own in-process
-# conversation history (best-effort; resets on cold start). The cache is bounded
-# to 128 sessions with LRU eviction (least-recently-used is dropped and its
-# history reset) so a single process serving many sessions cannot leak history
-# between them or grow without limit. For durable history, attach a session manager.
-def agent_factory():
-    cache = OrderedDict()
-    def get_or_create_agent(session_id):
-        if session_id in cache:
-            cache.move_to_end(session_id)
-            return cache[session_id]
-        if len(cache) >= 128:
-            cache.popitem(last=False)
-        cache[session_id] = Agent(
-            model=load_model(),
-            system_prompt=DEFAULT_SYSTEM_PROMPT,
-            tools=tools,
-            conversation_manager=_make_conversation_manager(),
-            hooks=[
-            ],
-        )
-        return cache[session_id]
-    return get_or_create_agent
-get_or_create_agent = agent_factory()
-
-
-def strip_trailing_tool_use(messages: Any) -> list[dict]:
-    """Strip toolUse blocks from the tail until the last message has none."""
-    if not isinstance(messages, list):
-        raise ValueError("messages must be a list")
-
-    messages = list(messages)
-    while messages:
-        last = messages[-1]
-        if not isinstance(last, dict):
-            raise ValueError("each message must be an object")
-        original_content = last.get("content", [])
-        if not isinstance(original_content, list) or not all(isinstance(block, dict) for block in original_content):
-            raise ValueError("each message content value must be a list of content blocks")
-
-        content = [block for block in original_content if "toolUse" not in block]
-        if len(content) == len(original_content):
-            break
-        if content:
-            messages[-1] = {**last, "content": content}
-            break
-        messages.pop()
-
-    return messages
-
-
-def _extract_prompt(payload: dict):
-    """Accept validated harness messages, tool results, or a plain prompt string."""
-    if not isinstance(payload, dict):
-        raise ValueError("payload must be a JSON object")
-    if "messages" in payload:
-        return strip_trailing_tool_use(payload["messages"])
-    if "tool_results" in payload:
-        tool_results = payload["tool_results"]
-        if not isinstance(tool_results, list) or not all(
-            isinstance(tool_result, dict) and isinstance(tool_result.get("toolUseId"), str)
-            for tool_result in tool_results
-        ):
-            raise ValueError("tool_results must contain objects with a toolUseId string")
-        return [{"role": "user", "content": [{"toolResult": {
-            "toolUseId": tr["toolUseId"],
-            "status": tr.get("status", "success"),
-            "content": tr.get("content", []),
-        }} for tr in tool_results]}]
-    prompt = payload.get("prompt", "")
-    if not isinstance(prompt, str):
-        raise ValueError("prompt must be a string")
-    return prompt
-
-
-def _has_inline_function_call(messages) -> bool:
-    """Return True if messages contains an assistant toolUse for an inline function tool."""
-    if not _INLINE_FUNCTION_NAMES or not isinstance(messages, list):
-        return False
-    for msg in messages:
-        if msg.get("role") == "assistant":
-            for block in msg.get("content", []):
-                if isinstance(block, dict) and block.get("toolUse", {}).get("name") in _INLINE_FUNCTION_NAMES:
-                    return True
-    return False
-
-
-def _is_inline_function_call(event: dict) -> bool:
-    """Check if a contentBlockStart event is for an inline function tool."""
-    if not _INLINE_FUNCTION_NAMES:
-        return False
-    cbs = event.get("contentBlockStart", {})
-    start = cbs.get("start", {})
-    tool_use = start.get("toolUse") if isinstance(start, dict) else None
-    return tool_use is not None and tool_use.get("name") in _INLINE_FUNCTION_NAMES
-
+    chunks = [r["content"]["text"] for r in results]
+    return "\n---\n".join(chunks)
 
 
 @app.entrypoint
@@ -145,21 +58,48 @@ async def invoke(payload, context):
     log.info("Invoking Agent.....")
 
 
-    session_id = getattr(context, 'session_id', 'default-session')
-    agent = get_or_create_agent(session_id)
+    # session_id = getattr(context, 'session_id', 'default-session')
+    # agent = get_or_create_agent(session_id)
 
-    prompt = _extract_prompt(payload)
+    # prompt = _extract_prompt(payload)
 
 
-    async for event in agent.stream_async(
-        prompt,
-    ):
-        if not isinstance(event, dict) or "event" not in event:
-            continue
-        cbs = event["event"].get("contentBlockStart")
-        if cbs is not None and not cbs.get("start"):
-            continue
-        yield event
+    # async for event in agent.stream_async(
+    #     prompt, tools=[classification_intent_agent]
+    # ):
+    #     if not isinstance(event, dict) or "event" not in event:
+    #         continue
+    #     cbs = event["event"].get("contentBlockStart")
+    #     if cbs is not None and not cbs.get("start"):
+    #         continue
+    #     yield event
+    print(payload, "<<<<<<")
+
+    user_message = payload.get("prompt", "Hello!")
+
+    # logger.info("KB: %s | User: %s", KB_ID, user_message[:80])
+
+    # system_prompt = """You are a classification agent. Your ONLY job:
+    #     Classify the intent of the user based on the user prompt to either of these:
+    #     - CHAT: When the prompt is asking about the user or wants to know more about the user, projects the user 
+    #         has worked on, places the user has worked.
+    #     - FEEDBACK: When the user needs to receive an update on what is going on in his/her portfolio, like page visits, 
+    #         or update on questions being asked on the chat
+    #     Your response should be a json object with the following fields:
+    #     {"intent": <CHAT|FEEDBACK>,
+    #     "language": <the language the prompt was sent in>}
+    #     Do NOT add any other commentary."""
+
+    system_prompt=Path(__file__).with_name("agent_prompt.txt").read_text(encoding="utf-8")
+
+    agent = Agent(
+        model=NOVA_LITE_MODEL,
+        system_prompt=system_prompt,
+        tools=[classification_intent_agent],
+    )
+
+    response = agent(user_message)
+    return response
 
 
 if __name__ == "__main__":

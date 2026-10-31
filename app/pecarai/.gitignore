@@ -25,9 +25,12 @@ wheels/
 
 # Virtual environments
 .venv/
+app/pecarai/.venv/
+app/pecarai/__pycache__/
 venv/
 ENV/
-env/
+.env/
+/.env/
 
 # IDE
 .vscode/
