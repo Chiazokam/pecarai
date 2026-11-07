@@ -1780,6 +1780,7 @@ dependencies = [
     { name = "boto3" },
     { name = "botocore", extra = ["crt"] },
     { name = "mcp" },
+    { name = "python-dotenv" },
     { name = "strands-agents" },
 ]
 
@@ -1790,6 +1791,7 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.35.0" },
     { name = "botocore", extras = ["crt"], specifier = ">=1.35.0" },
     { name = "mcp", specifier = "~=1.24.0" },
+    { name = "python-dotenv", specifier = ">=1.2.4" },
     { name = "strands-agents", specifier = ">=1.15.0" },
 ]
 
