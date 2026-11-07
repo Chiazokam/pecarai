@@ -10,6 +10,7 @@ from model.load import load_model
 from mcp_client.client import get_streamable_http_mcp_client
 from strands.models import BedrockModel
 from dotenv import load_dotenv
+from agent_prompt import get_agent_prompt
 
 
 app = BedrockAgentCoreApp()
@@ -77,7 +78,7 @@ async def invoke(payload, context):
 
     user_message = payload.get("prompt", "Hello!")
 
-    system_prompt=Path(__file__).with_name("agent_prompt.txt").read_text(encoding="utf-8")
+    system_prompt = get_agent_prompt("Chiazokam")
 
     agent = Agent(
         model=MODEL_LITE,
