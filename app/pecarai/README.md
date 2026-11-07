@@ -23,7 +23,20 @@ invoking the agent.
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `LOCAL_DEV` | No | Set to `1` to use `.env.local` instead of AgentCore Identity |
+| `AWS_REGION` | No | Bedrock model and knowledge base region; defaults to `us-east-1` |
+| `MODEL_LITE` | Yes | Model ID used by the agent |
+| `MODEL_MEDIUM` | Yes | Model ID used to initialize the medium Bedrock model |
+| `MODEL_PRO` | No | Reserved model ID; currently unused |
+| `KB_ID` | Yes | Knowledge base ID used by the retrieval tool |
+
+For local development, copy `.env.example` to `.env` in this directory and fill in the IDs.
+The app loads this file before reading configuration, regardless of the working directory.
+Existing process environment variables take precedence. Restart the server after changing values.
+At startup, the app logs only these five configuration values and fails explicitly if a required
+ID is missing or blank.
+
+For deployment, configure these variables in the AgentCore runtime environment. Do not rely on
+the gitignored local `.env` file being deployed or package credentials into the application.
 
 # Developing locally
 

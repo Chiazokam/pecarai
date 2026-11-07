@@ -1,3 +1,17 @@
 {
-  "targets": {}
+  "targets": {
+    "default": {
+      "resources": {
+        "runtimes": {
+          "pecarai": {
+            "runtimeId": "pecarai_pecarai-GGw8qLGJyG",
+            "runtimeArn": "arn:aws:bedrock-agentcore:us-east-1:854999398054:runtime/pecarai_pecarai-GGw8qLGJyG",
+            "roleArn": "arn:aws:iam::854999398054:role/AgentCore-pecarai-default-ApplicationAgentPecaraiRu-0kI09Qn6ELi0"
+          }
+        },
+        "stackName": "AgentCore-pecarai-default",
+        "deployHash": "afb9ea0c41f5778c"
+      }
+    }
+  }
 }

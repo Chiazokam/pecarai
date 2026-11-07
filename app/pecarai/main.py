@@ -9,16 +9,35 @@ from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
 from mcp_client.client import get_streamable_http_mcp_client
 from strands.models import BedrockModel
+from dotenv import load_dotenv
 
 
 app = BedrockAgentCoreApp()
 log = app.logger
+
+load_dotenv(Path(__file__).resolve().with_name(".env"), override=False)
 
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 MODEL_LITE = os.environ.get("MODEL_LITE", "")                    # Fast, lightweight
 MODEL_MEDIUM = os.environ.get("MODEL_MEDIUM", "")     # Deep reasoning
 MODEL_PRO = os.environ.get("MODEL_PRO", "")  
 KB_ID = os.environ.get("KB_ID", "")  
+log.info(
+    "Agent configuration: AWS_REGION=%s, MODEL_LITE=%s, MODEL_MEDIUM=%s, MODEL_PRO=%s, KB_ID=%s",
+    AWS_REGION, MODEL_LITE, MODEL_MEDIUM, MODEL_PRO, KB_ID,
+)
+
+missing_env_vars = [
+    name for name, value in (
+        ("MODEL_LITE", MODEL_LITE),
+        ("MODEL_MEDIUM", MODEL_MEDIUM),
+        ("KB_ID", KB_ID),
+    ) if not value.strip()
+]
+if missing_env_vars:
+    message = f"Missing required environment variables: {', '.join(missing_env_vars)}"
+    log.error(message)
+    raise ValueError(message)
 
 model = BedrockModel(
     model_id=MODEL_MEDIUM,
@@ -61,7 +80,7 @@ async def invoke(payload, context):
     system_prompt=Path(__file__).with_name("agent_prompt.txt").read_text(encoding="utf-8")
 
     agent = Agent(
-        model=NOVA_LITE_MODEL,
+        model=MODEL_LITE,
         system_prompt=system_prompt,
         tools=[classification_intent_agent],
     )
