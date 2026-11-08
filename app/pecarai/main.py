@@ -11,6 +11,7 @@ from mcp_client.client import get_streamable_http_mcp_client
 from strands.models import BedrockModel
 from dotenv import load_dotenv
 from agent_prompt import get_agent_prompt
+from memory.session import get_memory_session_manager
 
 
 app = BedrockAgentCoreApp()
@@ -74,6 +75,8 @@ def classification_intent_agent(query: str) -> str:
 
 @app.entrypoint
 async def invoke(payload, context):
+    session_id = getattr(context, 'session_id', 'default-session')
+    user_id = getattr(context, 'user_id', 'default-user')
     log.info("Invoking Agent.....")
 
     user_message = payload.get("prompt", "Hello!")
@@ -82,6 +85,7 @@ async def invoke(payload, context):
 
     agent = Agent(
         model=MODEL_LITE,
+        session_manager=get_memory_session_manager(session_id, user_id),
         system_prompt=system_prompt,
         tools=[classification_intent_agent],
     )

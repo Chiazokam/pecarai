@@ -4,13 +4,19 @@
       "resources": {
         "runtimes": {
           "pecarai": {
-            "runtimeId": "pecarai_pecarai-GGw8qLGJyG",
-            "runtimeArn": "arn:aws:bedrock-agentcore:us-east-1:854999398054:runtime/pecarai_pecarai-GGw8qLGJyG",
-            "roleArn": "arn:aws:iam::854999398054:role/AgentCore-pecarai-default-ApplicationAgentPecaraiRu-0kI09Qn6ELi0"
+            "runtimeId": "pecarai_pecarai-Hyur4NB7x1",
+            "runtimeArn": "arn:aws:bedrock-agentcore:us-east-1:854999398054:runtime/pecarai_pecarai-Hyur4NB7x1",
+            "roleArn": "arn:aws:iam::854999398054:role/AgentCore-pecarai-default-ApplicationAgentPecaraiRu-qOlaKvTfvROa"
+          }
+        },
+        "memories": {
+          "pecaraiMemory": {
+            "memoryId": "pecarai_pecaraiMemory-Siv1aZ4aVb",
+            "memoryArn": "arn:aws:bedrock-agentcore:us-east-1:854999398054:memory/pecarai_pecaraiMemory-Siv1aZ4aVb"
           }
         },
         "stackName": "AgentCore-pecarai-default",
-        "deployHash": "afb9ea0c41f5778c"
+        "deployHash": "935246d3944c3c36"
       }
     }
   }
