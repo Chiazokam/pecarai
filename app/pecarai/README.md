@@ -19,6 +19,50 @@ Validate invocation input before forwarding it to Strands. Keep plain prompts ty
 caller-supplied message history, retain `strip_trailing_tool_use()`, which normalizes the history tail before
 invoking the agent.
 
+## Conversation Memory
+
+Set `MEMORY_ID` to the deployed ID of `pecaraiMemory` (not its resource name).
+Memory configuration is read after dotenv loads. Missing configuration is an error,
+not a fallback to a stateless agent.
+
+The caller must reuse the same session ID for every turn in a conversation. Deployed
+requests use AgentCore's runtime session ID from the request context. For local requests
+without that context, supply `session_id` in the JSON payload. If both are present, they
+must match. Generate a fresh, unguessable session ID for each new visitor/conversation,
+keep it private, and restrict access to it in your caller/backend.
+When using Boto3's `invoke_agent_runtime`, reuse its `runtimeSessionId` argument on
+every turn; a JSON payload field does not override the runtime session ID.
+
+For example, send these two payloads with the same session ID:
+
+```json
+{"prompt": "My name is Jane.", "session_id": "8b83788e-6e93-4dd9-b56e-c8602cf825f7"}
+```
+
+```json
+{"prompt": "What is my name?", "session_id": "8b83788e-6e93-4dd9-b56e-c8602cf825f7"}
+```
+
+The SDK saves messages to AgentCore Memory and restores them when a new agent is created
+for the next turn. Each conversation has a separate memory actor; there is no shared
+`default-user` or cross-conversation visitor recall. Runtime IDs are deterministically
+hashed into Memory-compatible IDs. Pending writes are flushed before the invocation
+returns. The portfolio owner in the system prompt is separate from the visitor.
+
+This implementation uses short-term conversation history for recall, not semantic
+long-term retrieval. The configured semantic/summarization strategies may still generate
+records asynchronously, but they are not queried by this conversation-only implementation.
+You do not need to wait for semantic extraction to recall a name in the same conversation.
+Events expire after the memory resource's configured 30-day retention period.
+
+Adding a memory resource to `agentcore.json` does not by itself make your code remember
+anything. Configure `MEMORY_ID` in the deployed runtime as well as locally, and ensure its
+execution role can call `bedrock-agentcore:CreateEvent`, `ListEvents`, `GetEvent`, and
+`DeleteEvent` on that memory. Check runtime logs for persistence or permission errors.
+The CDK deployment execution role is not the agent's runtime execution role.
+Messages sent while memory was disabled cannot be recovered; start a new conversation
+after applying this fix.
+
 ## Environment Variables
 
 | Variable | Required | Description |
@@ -28,6 +72,7 @@ invoking the agent.
 | `MODEL_MEDIUM` | Yes | Model ID used to initialize the medium Bedrock model |
 | `MODEL_PRO` | No | Reserved model ID; currently unused |
 | `KB_ID` | Yes | Knowledge base ID used by the retrieval tool |
+| `MEMORY_ID` | Yes | Deployed AgentCore Memory ID used for conversation persistence |
 
 For local development, copy `.env.example` to `.env` in this directory and fill in the IDs.
 The app loads this file before reading configuration, regardless of the working directory.
@@ -47,9 +92,23 @@ Command Prompt, or `.\.venv\Scripts\activate.ps1` in Windows PowerShell.
 
 `agentcore dev` will start a local server on 0.0.0.0:8080.
 
-In a new terminal, you can invoke that server with:
+In a new terminal, you can invoke that server directly with:
 
-`agentcore invoke --dev "What can you do"`
+```bash
+curl http://localhost:8080/invocations \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt": "My name is Jane.", "session_id": "8b83788e-6e93-4dd9-b56e-c8602cf825f7"}'
+
+curl http://localhost:8080/invocations \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt": "What is my name?", "session_id": "8b83788e-6e93-4dd9-b56e-c8602cf825f7"}'
+```
+
+## Testing Memory
+
+From this directory, run `python -m unittest discover -s tests -p test_memory.py -v`.
+These tests exercise the real session manager's save/restore path with mocked AWS
+storage and model output. They do not call AWS or verify deployed IAM permissions.
 
 # Deployment
 

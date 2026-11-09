@@ -75,23 +75,47 @@ def classification_intent_agent(query: str) -> str:
 
 @app.entrypoint
 async def invoke(payload, context):
-    session_id = getattr(context, 'session_id', 'default-session')
-    user_id = getattr(context, 'user_id', 'default-user')
     log.info("Invoking Agent.....")
 
+    if not isinstance(payload, dict):
+        message = "Invocation payload must be a JSON object"
+        log.error(message)
+        raise ValueError(message)
+
     user_message = payload.get("prompt", "Hello!")
+    if not isinstance(user_message, str):
+        message = "prompt must be a string"
+        log.error(message)
+        raise ValueError(message)
+
+    context_session_id = getattr(context, "session_id", None)
+    payload_session_id = payload.get("session_id")
+    session_id = context_session_id or payload_session_id
+    if not isinstance(session_id, str) or not session_id.strip():
+        message = "A non-empty session_id is required in the runtime context or payload"
+        log.error(message)
+        raise ValueError(message)
+    if (
+        context_session_id
+        and payload_session_id is not None
+        and payload_session_id != context_session_id
+    ):
+        message = "Payload session_id must match the runtime session_id"
+        log.error(message)
+        raise ValueError(message)
 
     system_prompt = get_agent_prompt("Chiazokam")
 
-    agent = Agent(
-        model=MODEL_LITE,
-        session_manager=get_memory_session_manager(session_id, user_id),
-        system_prompt=system_prompt,
-        tools=[classification_intent_agent],
-    )
+    with get_memory_session_manager(session_id) as session_manager:
+        agent = Agent(
+            model=MODEL_LITE,
+            session_manager=session_manager,
+            system_prompt=system_prompt,
+            tools=[classification_intent_agent],
+        )
 
-    response = agent(user_message)
-    return response
+        response = agent(user_message)
+        return response
 
 
 if __name__ == "__main__":
